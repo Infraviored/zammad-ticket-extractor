@@ -14,7 +14,7 @@ async function runOnActiveTab({ alsoJson }) {
     console.log('[BG] Injecting script...');
     const extractCode = extractAndCopy.toString();
     console.log('[BG] Extract function length:', extractCode.length);
-    
+
     // Use message passing to get the result since executeScript doesn't properly await Promises in MV2
     return new Promise((resolve) => {
       // Set up one-time listener for the result
@@ -22,7 +22,7 @@ async function runOnActiveTab({ alsoJson }) {
         if (msg && msg.type === 'EXTRACTION_RESULT') {
           browser.runtime.onMessage.removeListener(listener);
           console.log('[BG] Received result via message:', msg.result);
-          
+
           if (msg.result && msg.result.ok) {
             if (alsoJson && msg.result.json) {
               const filename = msg.result.filename || `ticket-${Date.now()}.json`;
@@ -31,18 +31,18 @@ async function runOnActiveTab({ alsoJson }) {
                 console.log('[BG] JSON downloaded:', filename);
               });
             }
-            resolve({ 
-              ...msg.result, 
-              message: msg.result.copied ? 'Copied to clipboard' + (alsoJson ? ' and JSON downloaded' : '') : 'Failed to copy to clipboard' 
+            resolve({
+              ...msg.result,
+              message: msg.result.copied ? 'Copied to clipboard' + (alsoJson ? ' and JSON downloaded' : '') : 'Failed to copy to clipboard'
             });
           } else {
             resolve(msg.result || { ok: false, error: 'No result returned' });
           }
         }
       };
-      
+
       browser.runtime.onMessage.addListener(listener);
-      
+
       // Inject script that sends message back
       browser.tabs.executeScript(tab.id, {
         code: `
@@ -99,14 +99,14 @@ browser.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
 // Function executed in the page context
 async function extractAndCopy({ alsoJson }) {
   console.log('[EXTRACT] Starting extraction, alsoJson:', alsoJson);
-  
+
   function textFromNode(node) {
     if (!node) return "";
     const clone = node.cloneNode(true);
 
     // Remove UI/irrelevant elements
     clone.querySelectorAll('.dropdown, .article-meta-links').forEach(n => n.remove());
-    
+
     // Remove everything after signature marker
     const signatureMarker = clone.querySelector('.js-signatureMarker');
     if (signatureMarker) {
@@ -120,7 +120,7 @@ async function extractAndCopy({ alsoJson }) {
     }
 
     // Remove quoted header blocks (Von:/From:/Gesendet:/An:/Betreff:)
-    const quotedHeaderSelectors = ["p", "div"]; 
+    const quotedHeaderSelectors = ["p", "div"];
     const headerStarts = [/^\s*Von:/i, /^\s*From:/i, /^\s*Gesendet:/i, /^\s*An:/i, /^\s*Betreff:/i];
     for (const sel of quotedHeaderSelectors) {
       clone.querySelectorAll(sel).forEach(el => {
@@ -132,7 +132,7 @@ async function extractAndCopy({ alsoJson }) {
             cur.remove();
             if (!next) break;
             const isBlank = (next.nodeType === 3 && !next.textContent.trim()) ||
-              (next.nodeType === 1 && ["P","DIV","BR"].includes(next.nodeName) && !(next.textContent || "").trim());
+              (next.nodeType === 1 && ["P", "DIV", "BR"].includes(next.nodeName) && !(next.textContent || "").trim());
             if (isBlank) {
               next.remove();
               break;
@@ -160,7 +160,7 @@ async function extractAndCopy({ alsoJson }) {
     clone.querySelectorAll('br').forEach(br => br.replaceWith(document.createTextNode('\n')));
     // Only add newlines after block elements that are direct children of richtext-content
     // Avoid adding newlines after nested divs (like code blocks)
-    const blockTags = ['P','LI','H1','H2','H3','H4','H5','H6'];
+    const blockTags = ['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
     clone.querySelectorAll(blockTags.join(',')).forEach(el => {
       if (!el.childNodes.length || (el.textContent || '').trim().length === 0) return;
       el.appendChild(document.createTextNode('\n'));
@@ -188,7 +188,7 @@ async function extractAndCopy({ alsoJson }) {
       /(?:^|\n)\s*Sincerely[^\n]*(?:\n|$)/i,
       /(?:^|\n)\s*Regards[^\n]*(?:\n|$)/i
     ];
-    
+
     let earliestMatch = txt.length;
     for (const pattern of farewellPatterns) {
       const match = txt.match(pattern);
@@ -196,7 +196,7 @@ async function extractAndCopy({ alsoJson }) {
         earliestMatch = match.index;
       }
     }
-    
+
     if (earliestMatch < txt.length) {
       // Find the end of the farewell line - keep "Viele Grüße" but remove everything after
       // The match starts at newline or start, so find where the farewell line ends
@@ -212,7 +212,7 @@ async function extractAndCopy({ alsoJson }) {
         txt = txt.slice(0, earliestMatch).trimEnd();
       }
     }
-    
+
     // Remove common legal/signature patterns that might remain
     const legalPatterns = [
       /Sitz der Gesellschaft[^\n]*(?:\n|$)/i,
@@ -224,7 +224,7 @@ async function extractAndCopy({ alsoJson }) {
       /VAT ID[^\n]*(?:\n|$)/i,
       /Place of incorporation[^\n]*(?:\n|$)/i
     ];
-    
+
     for (const pattern of legalPatterns) {
       txt = txt.replace(pattern, '');
     }
@@ -247,7 +247,7 @@ async function extractAndCopy({ alsoJson }) {
         btn.click();
         clickedCount++;
       }
-    } catch(e) {
+    } catch (e) {
       console.error('[EXTRACT] Error clicking button:', e);
     }
   });
@@ -270,11 +270,11 @@ async function extractAndCopy({ alsoJson }) {
 
   const title = (ticketRoot.querySelector('.js-objectTitle') || {}).textContent?.trim() || '';
   const number = ticketRoot.querySelector('.js-objectNumber')?.getAttribute('data-number')?.replace(/^Ticket#/, '') ||
-                 (ticketRoot.querySelector('.js-objectNumber') || {}).textContent?.trim() || '';
+    (ticketRoot.querySelector('.js-objectNumber') || {}).textContent?.trim() || '';
 
   function getArticleDate(article) {
     const linkTime = article.parentElement?.querySelector('a small .humanTimeFromNow[datetime]') ||
-                     article.querySelector('.humanTimeFromNow[datetime]');
+      article.querySelector('.humanTimeFromNow[datetime]');
     const dt = linkTime?.getAttribute('datetime');
     try { return dt ? new Date(dt).toISOString() : ''; } catch { return ''; }
   }
@@ -308,7 +308,7 @@ async function extractAndCopy({ alsoJson }) {
       console.log('[EXTRACT] Article', idx + 1, 'skipped: no customer/agent class');
       return;
     }
-    
+
     // Check if this is an internal note (missing article metadata or avatar)
     const hasArticleMeta = article.querySelector('.article-content-meta');
     const hasAvatar = article.querySelector('.js-avatar');
@@ -316,10 +316,10 @@ async function extractAndCopy({ alsoJson }) {
       console.log('[EXTRACT] Article', idx + 1, 'skipped: no metadata or avatar (internal note)');
       return;
     }
-    
+
     const role = isAgent ? 'agent' : 'customer';
     const contentEl = article.querySelector('.textBubble-content .richtext-content') ||
-                      article.querySelector('.textBubble-content');
+      article.querySelector('.textBubble-content');
     if (!contentEl) {
       console.log('[EXTRACT] Article', idx + 1, 'skipped: no content element');
       return;
@@ -332,13 +332,13 @@ async function extractAndCopy({ alsoJson }) {
 
     const { name, email } = getAuthor(article);
     console.log('[EXTRACT] Article', idx + 1, 'author check - name:', name, 'email:', email);
-    
+
     // Skip internal notes: if no email, it's internal
     if (!email || email.trim() === '') {
       console.log('[EXTRACT] Article', idx + 1, 'skipped: no email (internal note)');
       return;
     }
-    
+
     // Skip if no proper author name (internal notes might have empty/fallback names)
     if (!name || name === 'Agent' || name === 'Customer') {
       const metaFrom = article.querySelector('.article-content-meta .article-meta-row');
@@ -347,7 +347,7 @@ async function extractAndCopy({ alsoJson }) {
         return;
       }
     }
-    
+
     const dateIso = getArticleDate(article);
     console.log('[EXTRACT] Article', idx + 1, 'extracted:', name, email, role);
 
@@ -359,12 +359,12 @@ async function extractAndCopy({ alsoJson }) {
       contentText: text
     });
   });
-  
+
   console.log('[EXTRACT] Extracted', messages.length, 'messages');
 
   const transcript = messages.map(m => {
     const d = m.date ? new Date(m.date) : null;
-    const local = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+    const local = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
     return `mail: ${m.authorName}\ndate: ${local}\ncontent:\n${m.contentText}`;
   }).join('\n\n');
 
@@ -391,9 +391,9 @@ async function extractAndCopy({ alsoJson }) {
   console.log('[EXTRACT] Copying to clipboard...');
   const copied = copyToClipboard(transcript);
   console.log('[EXTRACT] Clipboard copy result:', copied);
-  
+
   const now = new Date();
-  const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
   const filename = `ticket-${number || 'unknown'}-${ts}.json`;
   const jsonMessages = messages.map(m => ({
     ...m,
@@ -406,18 +406,15 @@ async function extractAndCopy({ alsoJson }) {
     exportedAt: new Date().toISOString(),
     messages: jsonMessages
   };
-  
-  const result = { 
-    ok: true, 
-    transcript, 
-    json: alsoJson ? json : undefined, 
+
+  const result = {
+    ok: true,
+    transcript,
+    json: alsoJson ? json : undefined,
     filename,
     copied: copied
   };
-  
+
   console.log('[EXTRACT] Returning result:', { ok: result.ok, messageCount: messages.length, copied: result.copied });
   return result;
 }
-
-
-

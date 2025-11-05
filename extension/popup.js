@@ -29,30 +29,30 @@ async function runExtraction(alsoJson) {
 document.addEventListener('DOMContentLoaded', async () => {
   const copyBtn = document.getElementById('copyBtn');
   const downloadJsonBtn = document.getElementById('downloadJsonBtn');
-  
+
   let isRunning = false;
-  
+
   copyBtn.addEventListener('click', async () => {
     if (isRunning) return;
     isRunning = true;
     copyBtn.disabled = true;
     downloadJsonBtn.disabled = true;
-    
+
     const success = await runExtraction(false);
-    
+
     isRunning = false;
     copyBtn.disabled = false;
     downloadJsonBtn.disabled = false;
   });
-  
+
   downloadJsonBtn.addEventListener('click', async () => {
     if (isRunning) return;
     isRunning = true;
     copyBtn.disabled = true;
     downloadJsonBtn.disabled = true;
-    
+
     const success = await runExtraction(true);
-    
+
     isRunning = false;
     copyBtn.disabled = false;
     downloadJsonBtn.disabled = false;

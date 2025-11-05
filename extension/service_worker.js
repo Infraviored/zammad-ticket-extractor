@@ -14,7 +14,7 @@ async function getAlsoJsonPreference() {
 async function setAlsoJsonPreference(value) {
   try {
     await browser.storage.local.set({ [STORAGE_KEY]: Boolean(value) });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 async function runOnActiveTab({ alsoJson }) {
@@ -61,7 +61,7 @@ function extractAndCopy({ alsoJson }) {
     clone.querySelectorAll('.dropdown, .article-meta-links, .js-signatureMarker ~ *').forEach(n => n.remove());
 
     // Remove quoted header blocks
-    const quotedHeaderSelectors = ["p", "div"]; 
+    const quotedHeaderSelectors = ["p", "div"];
     const headerStarts = [/^\s*Von:/i, /^\s*From:/i, /^\s*Gesendet:/i, /^\s*An:/i, /^\s*Betreff:/i];
     for (const sel of quotedHeaderSelectors) {
       clone.querySelectorAll(sel).forEach(el => {
@@ -73,7 +73,7 @@ function extractAndCopy({ alsoJson }) {
             cur.remove();
             if (!next) break;
             const isBlank = (next.nodeType === 3 && !next.textContent.trim()) ||
-              (next.nodeType === 1 && ["P","DIV","BR"].includes(next.nodeName) && !(next.textContent || "").trim());
+              (next.nodeType === 1 && ["P", "DIV", "BR"].includes(next.nodeName) && !(next.textContent || "").trim());
             if (isBlank) {
               next.remove();
               break;
@@ -102,7 +102,7 @@ function extractAndCopy({ alsoJson }) {
 
     // Normalize block spacing
     clone.querySelectorAll('br').forEach(br => br.replaceWith(document.createTextNode('\n')));
-    const blockTags = ['P','DIV','LI','H1','H2','H3','H4','H5','H6'];
+    const blockTags = ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
     clone.querySelectorAll(blockTags.join(',')).forEach(el => {
       if (!el.childNodes.length || (el.textContent || '').trim().length === 0) return;
       el.appendChild(document.createTextNode('\n'));
@@ -134,7 +134,7 @@ function extractAndCopy({ alsoJson }) {
   }
 
   // Expand folded content and remove fixed heights
-  document.querySelectorAll('.js-toggleFold').forEach(btn => { try { btn.click(); } catch(e) {} });
+  document.querySelectorAll('.js-toggleFold').forEach(btn => { try { btn.click(); } catch (e) { } });
   document.querySelectorAll('.textBubble-content[style*="height"]').forEach(el => { el.style.removeProperty('height'); });
 
   const ticketRoot = document.querySelector('.ticketZoom');
@@ -142,11 +142,11 @@ function extractAndCopy({ alsoJson }) {
 
   const title = (ticketRoot.querySelector('.js-objectTitle') || {}).textContent?.trim() || '';
   const number = ticketRoot.querySelector('.js-objectNumber')?.getAttribute('data-number')?.replace(/^Ticket#/, '') ||
-                 (ticketRoot.querySelector('.js-objectNumber') || {}).textContent?.trim() || '';
+    (ticketRoot.querySelector('.js-objectNumber') || {}).textContent?.trim() || '';
 
   function getArticleDate(article) {
     const linkTime = article.parentElement?.querySelector('a small .humanTimeFromNow[datetime]') ||
-                     article.querySelector('.humanTimeFromNow[datetime]');
+      article.querySelector('.humanTimeFromNow[datetime]');
     const dt = linkTime?.getAttribute('datetime');
     try { return dt ? new Date(dt).toISOString() : ''; } catch { return ''; }
   }
@@ -171,7 +171,7 @@ function extractAndCopy({ alsoJson }) {
   document.querySelectorAll('.ticket-article-item').forEach(article => {
     const role = article.classList.contains('agent') ? 'agent' : 'customer';
     const contentEl = article.querySelector('.textBubble-content .richtext-content') ||
-                      article.querySelector('.textBubble-content');
+      article.querySelector('.textBubble-content');
     if (!contentEl) return;
     const text = textFromNode(contentEl);
     if (!text) return;
@@ -190,7 +190,7 @@ function extractAndCopy({ alsoJson }) {
 
   const transcript = messages.map(m => {
     const d = m.date ? new Date(m.date) : null;
-    const local = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+    const local = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
     return `mail: ${m.authorName}\ndate: ${local}\ncontent:\n${m.contentText}`;
   }).join('\n\n');
 
@@ -201,7 +201,7 @@ function extractAndCopy({ alsoJson }) {
       // ignore clipboard error but still proceed
     }
     const now = new Date();
-    const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
     const filename = `ticket-${number || 'unknown'}-${ts}.json`;
     const json = {
       ticketNumber: number || '',
