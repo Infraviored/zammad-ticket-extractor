@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Zammad Ticket Extractor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Extract and export Zammad ticket conversations to clipboard or JSON for AI analysis and data processing.",
   "browser_specific_settings": {
     "gecko": {
