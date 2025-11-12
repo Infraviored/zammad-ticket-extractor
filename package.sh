@@ -1,9 +1,25 @@
 #!/bin/bash
 # Package Firefox extension for production
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXTENSION_DIR="${SCRIPT_DIR}/extension"
+MANIFEST_FILE="${EXTENSION_DIR}/manifest.json"
+
+if [[ ! -f "${MANIFEST_FILE}" ]]; then
+  echo "Manifest not found at ${MANIFEST_FILE}" >&2
+  exit 1
+fi
 
 EXTENSION_NAME="ticket-extractor"
-VERSION=$(grep '"version"' manifest.json | cut -d'"' -f4)
-OUTPUT_DIR="dist"
+VERSION=$(grep -m1 '"version"' "${MANIFEST_FILE}" | sed -E 's/.*"version"\s*:\s*"([^"]+)".*/\1/')
+
+if [[ -z "${VERSION}" ]]; then
+  echo "Unable to determine version from manifest." >&2
+  exit 1
+fi
+
+OUTPUT_DIR="${SCRIPT_DIR}/dist"
 ZIP_FILE="${OUTPUT_DIR}/${EXTENSION_NAME}-v${VERSION}.zip"
 
 echo "Packaging Firefox extension v${VERSION}..."
@@ -22,22 +38,9 @@ FILES=(
 
 # Create zip file
 echo "Creating ${ZIP_FILE}..."
-cd extension
-zip -r "../${ZIP_FILE}" "${FILES[@]}" -x "*.DS_Store" "*.git*"
-cd ..
+(
+  cd "${EXTENSION_DIR}"
+  zip -r "${ZIP_FILE}" "${FILES[@]}" -x "*.DS_Store" "*.git*"
+)
 
 echo "✓ Extension packaged: ${ZIP_FILE}"
-echo ""
-echo "To install in Firefox:"
-echo "1. Open Firefox"
-echo "2. Go to about:debugging"
-echo "3. Click 'This Firefox'"
-echo "4. Click 'Load Temporary Add-on'"
-echo "5. Select the manifest.json file"
-echo ""
-echo "Or use web-ext:"
-echo "  web-ext run"
-echo ""
-echo "To build for AMO submission:"
-echo "  web-ext build --source-dir=extension --artifacts-dir=${OUTPUT_DIR}"
-
