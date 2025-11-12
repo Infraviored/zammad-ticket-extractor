@@ -11,10 +11,10 @@
       min-width: 200px;
     }
 
-    .button-row {
+    body {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 12px;
     }
 
     button {
@@ -45,17 +45,55 @@
       background: #0050c5;
     }
 
+    .settings {
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .settings select {
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 13px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .anonymize-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    .anonymize-toggle input {
+      cursor: pointer;
+    }
+
+    .button-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
 
     #status {
-      margin-top: 12px;
       font-size: 12px;
       color: #333;
       white-space: pre-wrap;
-      min-height: 20px;
     }
 
     .success {
@@ -65,10 +103,25 @@
     .error {
       color: #d13212;
     }
+
+    #status.hidden {
+      display: none;
+    }
   </style>
 </head>
 
 <body>
+  <label class="settings" for="copyFormat">
+    <span>Copy format</span>
+    <select id="copyFormat">
+      <option value="json">JSON</option>
+      <option value="text">Plain text</option>
+    </select>
+  </label>
+  <label class="anonymize-toggle" for="anonymizeToggle">
+    <input type="checkbox" id="anonymizeToggle">
+    <span>Anonymize (remove emails)</span>
+  </label>
   <div class="button-row">
     <button id="copyBtn" class="primary">Copy to Clipboard</button>
     <button id="downloadJsonBtn">Download JSON</button>

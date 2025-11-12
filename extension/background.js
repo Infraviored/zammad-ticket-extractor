@@ -1,7 +1,13 @@
 // MV2 background script (persistent) for Ticket Extractor
 
-async function runOnActiveTab({ alsoJson }) {
-  console.log('[BG] Starting extraction, alsoJson:', alsoJson);
+async function runOnActiveTab(options = {}) {
+  const runtimeOptions = {
+    copyFormat: options.copyFormat || 'json',
+    anonymize: Boolean(options.anonymize),
+    downloadJson: Boolean(options.downloadJson)
+  };
+
+  console.log('[BG] Starting extraction with options:', runtimeOptions);
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
   if (!tab || !tab.id) {
@@ -24,17 +30,40 @@ async function runOnActiveTab({ alsoJson }) {
           console.log('[BG] Received result via message:', msg.result);
 
           if (msg.result && msg.result.ok) {
-            if (alsoJson && msg.result.json) {
-              const filename = msg.result.filename || `ticket-${Date.now()}.json`;
-              const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(msg.result.json, null, 2)], { type: 'application/json' }));
-              browser.downloads.download({ url: blobUrl, filename, saveAs: false }).then(() => {
-                console.log('[BG] JSON downloaded:', filename);
+            (async () => {
+              let downloadedJson = false;
+              if (runtimeOptions.downloadJson && msg.result.json) {
+                try {
+                  const filename = msg.result.filename || `ticket-${Date.now()}.json`;
+                  const jsonPayload = JSON.stringify(msg.result.json, null, 2);
+                  const blobUrl = URL.createObjectURL(new Blob([jsonPayload], { type: 'application/json' }));
+                  await browser.downloads.download({ url: blobUrl, filename, saveAs: false });
+                  downloadedJson = true;
+                  console.log('[BG] JSON downloaded:', filename);
+                  setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
+                } catch (downloadError) {
+                  console.error('[BG] Failed to download JSON:', downloadError);
+                }
+              }
+
+              const messageParts = [];
+              if (msg.result.copied) {
+                messageParts.push(`Copied ${runtimeOptions.copyFormat === 'json' ? 'JSON' : 'text'} to clipboard`);
+              } else {
+                messageParts.push('Failed to copy to clipboard');
+              }
+              if (downloadedJson) {
+                messageParts.push('JSON downloaded');
+              } else if (runtimeOptions.downloadJson) {
+                messageParts.push('JSON download failed');
+              }
+
+              resolve({
+                ...msg.result,
+                downloadedJson,
+                message: msg.result.message || messageParts.filter(Boolean).join('. ')
               });
-            }
-            resolve({
-              ...msg.result,
-              message: msg.result.copied ? 'Copied to clipboard' + (alsoJson ? ' and JSON downloaded' : '') : 'Failed to copy to clipboard'
-            });
+            })();
           } else {
             resolve(msg.result || { ok: false, error: 'No result returned' });
           }
@@ -51,8 +80,9 @@ async function runOnActiveTab({ alsoJson }) {
             try {
               ${extractCode}
               
-              console.log('[INJECTED] Calling extractAndCopy with alsoJson=${alsoJson}...');
-              const result = await extractAndCopy({ alsoJson: ${alsoJson} });
+              const injectedOptions = ${JSON.stringify(runtimeOptions)};
+              console.log('[INJECTED] Calling extractAndCopy with options:', injectedOptions);
+              const result = await extractAndCopy(injectedOptions);
               console.log('[INJECTED] ExtractAndCopy returned:', result);
               
               // Send result back via message
@@ -88,17 +118,31 @@ async function runOnActiveTab({ alsoJson }) {
   }
 }
 
-browser.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === 'RUN_EXTRACTION') {
-    const alsoJson = typeof msg.alsoJson === 'boolean' ? msg.alsoJson : false;
-    const res = await runOnActiveTab({ alsoJson });
-    return res;
+    return runOnActiveTab(msg.options || {});
   }
 });
 
 // Function executed in the page context
-async function extractAndCopy({ alsoJson }) {
-  console.log('[EXTRACT] Starting extraction, alsoJson:', alsoJson);
+async function extractAndCopy(options = {}) {
+  const copyFormat = (options.copyFormat === 'text' ? 'text' : 'json');
+  const anonymize = Boolean(options.anonymize);
+  const downloadJson = Boolean(options.downloadJson);
+
+  console.log('[EXTRACT] Starting extraction with options:', { copyFormat, anonymize, downloadJson });
+
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+  function stripEmails(value) {
+    if (!value || typeof value !== 'string') return value;
+    return value
+      .replace(emailRegex, '')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .trim();
+  }
 
   function textFromNode(node) {
     if (!node) return "";
@@ -268,9 +312,10 @@ async function extractAndCopy({ alsoJson }) {
   }
   console.log('[EXTRACT] Found ticketZoom element');
 
-  const title = (ticketRoot.querySelector('.js-objectTitle') || {}).textContent?.trim() || '';
+  const rawTitle = (ticketRoot.querySelector('.js-objectTitle') || {}).textContent?.trim() || '';
   const number = ticketRoot.querySelector('.js-objectNumber')?.getAttribute('data-number')?.replace(/^Ticket#/, '') ||
     (ticketRoot.querySelector('.js-objectNumber') || {}).textContent?.trim() || '';
+  const title = anonymize ? stripEmails(rawTitle) : rawTitle;
 
   function getArticleDate(article) {
     const linkTime = article.parentElement?.querySelector('a small .humanTimeFromNow[datetime]') ||
@@ -362,6 +407,19 @@ async function extractAndCopy({ alsoJson }) {
 
   console.log('[EXTRACT] Extracted', messages.length, 'messages');
 
+  if (anonymize) {
+    messages.forEach(message => {
+      if (message.authorEmail) {
+        delete message.authorEmail;
+      }
+      message.authorName = stripEmails(message.authorName);
+      if (!message.authorName) {
+        message.authorName = 'Anonymous';
+      }
+      message.contentText = stripEmails(message.contentText);
+    });
+  }
+
   const transcript = messages.map(m => {
     const d = m.date ? new Date(m.date) : null;
     const local = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
@@ -388,18 +446,23 @@ async function extractAndCopy({ alsoJson }) {
     }
   }
 
-  console.log('[EXTRACT] Copying to clipboard...');
-  const copied = copyToClipboard(transcript);
-  console.log('[EXTRACT] Clipboard copy result:', copied);
-
   const now = new Date();
   const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
   const filename = `ticket-${number || 'unknown'}-${ts}.json`;
-  const jsonMessages = messages.map(m => ({
-    ...m,
-    contentText: m.contentText.replace(/\n/g, ' ')
-  }));
-  const json = {
+
+  const jsonMessages = messages.map(m => {
+    const normalizedContent = (m.contentText || '').replace(/\n/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    const entry = {
+      authorName: m.authorName,
+      ...(anonymize || !m.authorEmail ? {} : { authorEmail: m.authorEmail }),
+      role: m.role,
+      date: m.date,
+      contentText: normalizedContent
+    };
+    return entry;
+  });
+
+  const jsonPayload = {
     ticketNumber: number || '',
     ticketTitle: title || '',
     url: location.href,
@@ -407,14 +470,28 @@ async function extractAndCopy({ alsoJson }) {
     messages: jsonMessages
   };
 
+  const copySource = copyFormat === 'json' ? JSON.stringify(jsonPayload, null, 2) : transcript;
+
+  console.log('[EXTRACT] Copying to clipboard as', copyFormat);
+  const copied = copyToClipboard(copySource);
+  console.log('[EXTRACT] Clipboard copy result:', copied);
+
   const result = {
     ok: true,
     transcript,
-    json: alsoJson ? json : undefined,
+    json: (copyFormat === 'json' || downloadJson) ? jsonPayload : undefined,
     filename,
-    copied: copied
+    copied: copied,
+    copiedFormat: copyFormat,
+    anonymized: anonymize
   };
 
-  console.log('[EXTRACT] Returning result:', { ok: result.ok, messageCount: messages.length, copied: result.copied });
+  console.log('[EXTRACT] Returning result:', {
+    ok: result.ok,
+    messageCount: messages.length,
+    copied: result.copied,
+    copiedFormat: copyFormat,
+    anonymized: anonymize
+  });
   return result;
 }
