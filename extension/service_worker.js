@@ -17,7 +17,7 @@ async function setAlsoJsonPreference(value) {
   } catch (e) { }
 }
 
-async function runOnActiveTab({ alsoJson }) {
+async function runOnActiveTab({ alsoJson, anonymize = false }) {
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
   if (!tab || !tab.id) throw new Error('No active tab');
@@ -27,7 +27,7 @@ async function runOnActiveTab({ alsoJson }) {
     const [{ result }] = await browser.scripting.executeScript({
       target: { tabId: tab.id },
       func: extractAndCopy,
-      args: [{ alsoJson }]
+      args: [{ alsoJson, anonymize }]
     });
 
     if (result && result.ok && alsoJson && result.json) {
@@ -44,15 +44,17 @@ async function runOnActiveTab({ alsoJson }) {
 // Receives messages from popup
 browser.runtime.onMessage.addListener(async (msg, sender) => {
   if (msg && msg.type === 'RUN_EXTRACTION') {
-    if (typeof msg.alsoJson === 'boolean') await setAlsoJsonPreference(msg.alsoJson);
-    const alsoJson = typeof msg.alsoJson === 'boolean' ? msg.alsoJson : await getAlsoJsonPreference();
-    const res = await runOnActiveTab({ alsoJson });
+    const opts = msg.options || {};
+    if (typeof opts.downloadJson === 'boolean') await setAlsoJsonPreference(opts.downloadJson);
+    const alsoJson = typeof opts.downloadJson === 'boolean' ? opts.downloadJson : await getAlsoJsonPreference();
+    const anonymize = Boolean(opts.anonymize);
+    const res = await runOnActiveTab({ alsoJson, anonymize });
     return res;
   }
 });
 
 // Helper: The function injected into the page
-function extractAndCopy({ alsoJson }) {
+function extractAndCopy({ alsoJson, anonymize }) {
   function textFromNode(node) {
     if (!node) return "";
     const clone = node.cloneNode(true);
@@ -169,9 +171,12 @@ function extractAndCopy({ alsoJson }) {
 
   const messages = [];
   document.querySelectorAll('.ticket-article-item').forEach(article => {
-    const role = article.classList.contains('agent') ? 'agent' : 'customer';
+    const isSystem = article.classList.contains('system');
+    const role = isSystem ? 'system' : (article.classList.contains('agent') ? 'agent' : 'customer');
+    const visibility = article.classList.contains('is-internal') ? 'internal' : 'public';
     const contentEl = article.querySelector('.textBubble-content .richtext-content') ||
-      article.querySelector('.textBubble-content');
+      article.querySelector('.textBubble-content') ||
+      article.querySelector('.task-subline');
     if (!contentEl) return;
     const text = textFromNode(contentEl);
     if (!text) return;
@@ -179,19 +184,29 @@ function extractAndCopy({ alsoJson }) {
     const { name, email } = getAuthor(article);
     const dateIso = getArticleDate(article);
 
-    messages.push({
-      authorName: name,
-      authorEmail: email,
+    const message = {
+      authorName: isSystem ? 'System' : (name || ''),
+      authorEmail: isSystem ? '' : (email || ''),
       role,
+      visibility,
       date: dateIso,
       contentText: text
-    });
+    };
+
+    if (anonymize) {
+      delete message.authorName;
+      delete message.authorEmail;
+    }
+
+    messages.push(message);
   });
 
   const transcript = messages.map(m => {
     const d = m.date ? new Date(m.date) : null;
     const local = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
-    return `mail: ${m.authorName}\ndate: ${local}\ncontent:\n${m.contentText}`;
+    const vis = m.visibility === 'internal' ? 'internal' : 'public';
+    const mailLine = anonymize ? '[redacted]' : (m.authorName || '');
+    return `mail: ${mailLine}\nrole: ${m.role} (${vis})\ndate: ${local}\ncontent:\n${m.contentText}`;
   }).join('\n\n');
 
   return (async () => {
