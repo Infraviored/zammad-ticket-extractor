@@ -60,6 +60,19 @@ async function runExtraction({ downloadJson }) {
       console.error('Extension error:', res);
       return false;
     }
+    // The page may refuse the copy (e.g. not focused); the popup has focus, so retry here.
+    if (!res.copied) {
+      const text = currentSettings.copyFormat === 'json' && res.json ? JSON.stringify(res.json, null, 2) : res.transcript;
+      if (text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          res.copied = true;
+          res.message = '';
+        } catch (e) {
+          console.warn('Popup clipboard fallback failed:', e);
+        }
+      }
+    }
     const msg = res?.message || `Copied ${currentSettings.copyFormat === 'json' ? 'JSON' : 'text'} to clipboard.` + (downloadJson ? ' JSON downloaded.' : '');
     setStatus(msg, false);
     return true;

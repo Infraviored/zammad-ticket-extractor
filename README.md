@@ -1,10 +1,10 @@
-# Zammad Ticket Copier - Firefox Extension
+# Zammad Ticket Copier - Firefox & Chrome Extension
 
 Intelligently extract and export Zammad ticket conversations for analysis, archival, and AI processing.
 
 ## Overview
 
-A lightweight Firefox extension that extracts entire support ticket conversations from Zammad helpdesk systems. Export as formatted text or structured JSON for use with AI tools, data pipelines, and knowledge management systems.
+A lightweight browser extension for Firefox and Chrome that extracts entire support ticket conversations from Zammad helpdesk systems. Export as formatted text or structured JSON for use with AI tools, data pipelines, and knowledge management systems.
 
 **Perfect for:**
 - Support teams needing quick ticket archives
@@ -25,9 +25,35 @@ A lightweight Firefox extension that extracts entire support ticket conversation
 
 ## Installation
 
-### For Users (Temporary Loading)
+Build first: `npm install && npm run build`.
+
+### Firefox (temporary loading)
 1. Go to `about:debugging#/runtime/this-firefox`
 2. Click "Load Temporary Add-on"
-3. Select `extension/manifest.json`
+3. Select `build/firefox/manifest.json`
+
+### Chrome / Edge
+1. Go to `chrome://extensions` and enable Developer mode
+2. Click "Load unpacked"
+3. Select `build/chrome/`
 
 ### For Development
+
+One source tree, two browsers:
+
+```
+src/extract.js            extraction, runs inside the Zammad page (shared)
+src/background.js         Firefox MV2 background: injects extract.js as code
+src/popup.*, icons        shared
+src/browser-shim.js       maps `browser` to `chrome` where it is missing
+src-chrome/service_worker.js  Chrome MV3: chrome.scripting.executeScript(func)
+manifests/base.json       shared manifest keys
+manifests/firefox.json    Manifest V2, Gecko ID
+manifests/chrome.json     Manifest V3, scripting permission
+```
+
+```bash
+npm run build          # build/<browser>/ and dist/zammad-ticket-extractor-<browser>-<version>.zip
+npm run lint:firefox   # web-ext lint on build/firefox
+npm run check:chrome   # loads build/chrome in headless Chromium
+```
