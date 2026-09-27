@@ -60,9 +60,25 @@ async function runExtraction({ downloadJson }) {
       console.error('Extension error:', res);
       return false;
     }
-    const msg = res?.message || `Copied ${currentSettings.copyFormat === 'json' ? 'JSON' : 'text'} to clipboard.` + (downloadJson ? ' JSON downloaded.' : '');
-    setStatus(msg, false);
-    return true;
+    // The page may refuse the copy (e.g. not focused); the popup has focus, so retry here.
+    let copied = Boolean(res.copied);
+    if (!copied) {
+      const text = currentSettings.copyFormat === 'json' && res.json ? JSON.stringify(res.json, null, 2) : res.transcript;
+      if (text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch (e) {
+          console.warn('Popup clipboard fallback failed:', e);
+        }
+      }
+    }
+    const format = currentSettings.copyFormat === 'json' ? 'JSON' : 'text';
+    const parts = [copied ? `Copied ${format} to clipboard.` : 'Failed to copy to clipboard.'];
+    if (downloadJson) parts.push(res.downloadedJson ? 'JSON downloaded.' : 'JSON download failed.');
+    const failed = !copied || (downloadJson && !res.downloadedJson);
+    setStatus(parts.join(' '), failed);
+    return !failed;
   } catch (e) {
     setStatus(`Failed: ${e?.message || String(e)}`, true);
     console.error('Popup error:', e);

@@ -1,128 +1,6 @@
-// MV2 background script (persistent) for Ticket Extractor
-
-async function runOnActiveTab(options = {}) {
-  const runtimeOptions = {
-    copyFormat: options.copyFormat || 'json',
-    anonymize: Boolean(options.anonymize),
-    downloadJson: Boolean(options.downloadJson)
-  };
-
-  console.log('[BG] Starting extraction with options:', runtimeOptions);
-  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-  const tab = tabs[0];
-  if (!tab || !tab.id) {
-    console.error('[BG] No active tab found');
-    throw new Error('No active tab');
-  }
-  console.log('[BG] Tab found:', tab.id, tab.url);
-
-  try {
-    console.log('[BG] Injecting script...');
-    const extractCode = extractAndCopy.toString();
-    console.log('[BG] Extract function length:', extractCode.length);
-
-    // Use message passing to get the result since executeScript doesn't properly await Promises in MV2
-    return new Promise((resolve) => {
-      // Set up one-time listener for the result
-      const listener = (msg) => {
-        if (msg && msg.type === 'EXTRACTION_RESULT') {
-          browser.runtime.onMessage.removeListener(listener);
-          console.log('[BG] Received result via message:', msg.result);
-
-          if (msg.result && msg.result.ok) {
-            (async () => {
-              let downloadedJson = false;
-              if (runtimeOptions.downloadJson && msg.result.json) {
-                try {
-                  const filename = msg.result.filename || `ticket-${Date.now()}.json`;
-                  const jsonPayload = JSON.stringify(msg.result.json, null, 2);
-                  const blobUrl = URL.createObjectURL(new Blob([jsonPayload], { type: 'application/json' }));
-                  await browser.downloads.download({ url: blobUrl, filename, saveAs: false });
-                  downloadedJson = true;
-                  console.log('[BG] JSON downloaded:', filename);
-                  setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
-                } catch (downloadError) {
-                  console.error('[BG] Failed to download JSON:', downloadError);
-                }
-              }
-
-              const messageParts = [];
-              if (msg.result.copied) {
-                messageParts.push(`Copied ${runtimeOptions.copyFormat === 'json' ? 'JSON' : 'text'} to clipboard`);
-              } else {
-                messageParts.push('Failed to copy to clipboard');
-              }
-              if (downloadedJson) {
-                messageParts.push('JSON downloaded');
-              } else if (runtimeOptions.downloadJson) {
-                messageParts.push('JSON download failed');
-              }
-
-              resolve({
-                ...msg.result,
-                downloadedJson,
-                message: msg.result.message || messageParts.filter(Boolean).join('. ')
-              });
-            })();
-          } else {
-            resolve(msg.result || { ok: false, error: 'No result returned' });
-          }
-        }
-      };
-
-      browser.runtime.onMessage.addListener(listener);
-
-      // Inject script that sends message back
-      browser.tabs.executeScript(tab.id, {
-        code: `
-          (async function() {
-            console.log('[INJECTED] Script starting...');
-            try {
-              ${extractCode}
-              
-              const injectedOptions = ${JSON.stringify(runtimeOptions)};
-              console.log('[INJECTED] Calling extractAndCopy with options:', injectedOptions);
-              const result = await extractAndCopy(injectedOptions);
-              console.log('[INJECTED] ExtractAndCopy returned:', result);
-              
-              // Send result back via message
-              browser.runtime.sendMessage({
-                type: 'EXTRACTION_RESULT',
-                result: result
-              });
-            } catch (e) {
-              console.error('[INJECTED] Extraction error:', e);
-              browser.runtime.sendMessage({
-                type: 'EXTRACTION_RESULT',
-                result: { 
-                  ok: false, 
-                  error: e?.message || String(e), 
-                  stack: e?.stack,
-                  name: e?.name
-                }
-              });
-            }
-          })();
-        `
-      }).catch((e) => {
-        browser.runtime.onMessage.removeListener(listener);
-        console.error('[BG] Failed to inject script:', e);
-        resolve({ ok: false, error: e?.message || String(e) });
-      });
-    });
-  } catch (e) {
-    console.error('[BG] Background script error:', e);
-    console.error('[BG] Error stack:', e?.stack);
-    console.error('[BG] Error name:', e?.name);
-    return { ok: false, error: e?.message || String(e), stack: e?.stack, name: e?.name };
-  }
-}
-
-browser.runtime.onMessage.addListener((msg) => {
-  if (msg && msg.type === 'RUN_EXTRACTION') {
-    return runOnActiveTab(msg.options || {});
-  }
-});
+// Shared by the Firefox background script and the Chrome service worker.
+// extractAndCopy runs inside the Zammad page: Firefox injects its source text,
+// Chrome passes the function itself to chrome.scripting.executeScript.
 
 // Function executed in the page context
 async function extractAndCopy(options = {}) {
@@ -346,25 +224,19 @@ async function extractAndCopy(options = {}) {
   console.log('[EXTRACT] Found', allArticles.length, 'articles');
   const messages = [];
   allArticles.forEach((article, idx) => {
-    // Skip internal/system messages - only extract customer and agent messages
-    const isCustomer = article.classList.contains('customer');
+    const isSystem = article.classList.contains('system');
     const isAgent = article.classList.contains('agent');
-    if (!isCustomer && !isAgent) {
-      console.log('[EXTRACT] Article', idx + 1, 'skipped: no customer/agent class');
+    const isCustomer = article.classList.contains('customer');
+    if (!isSystem && !isAgent && !isCustomer) {
+      console.log('[EXTRACT] Article', idx + 1, 'skipped: unknown type');
       return;
     }
 
-    // Check if this is an internal note (missing article metadata or avatar)
-    const hasArticleMeta = article.querySelector('.article-content-meta');
-    const hasAvatar = article.querySelector('.js-avatar');
-    if (!hasArticleMeta && !hasAvatar) {
-      console.log('[EXTRACT] Article', idx + 1, 'skipped: no metadata or avatar (internal note)');
-      return;
-    }
-
-    const role = isAgent ? 'agent' : 'customer';
+    const role = isSystem ? 'system' : (isAgent ? 'agent' : 'customer');
+    const visibility = article.classList.contains('is-internal') ? 'internal' : 'public';
     const contentEl = article.querySelector('.textBubble-content .richtext-content') ||
-      article.querySelector('.textBubble-content');
+      article.querySelector('.textBubble-content') ||
+      article.querySelector('.task-subline');
     if (!contentEl) {
       console.log('[EXTRACT] Article', idx + 1, 'skipped: no content element');
       return;
@@ -376,46 +248,26 @@ async function extractAndCopy(options = {}) {
     }
 
     const { name, email } = getAuthor(article);
-    console.log('[EXTRACT] Article', idx + 1, 'author check - name:', name, 'email:', email);
-
-    // Skip internal notes: if no email, it's internal
-    if (!email || email.trim() === '') {
-      console.log('[EXTRACT] Article', idx + 1, 'skipped: no email (internal note)');
-      return;
-    }
-
-    // Skip if no proper author name (internal notes might have empty/fallback names)
-    if (!name || name === 'Agent' || name === 'Customer') {
-      const metaFrom = article.querySelector('.article-content-meta .article-meta-row');
-      if (!metaFrom || !/From/i.test(metaFrom.textContent || '')) {
-        console.log('[EXTRACT] Article', idx + 1, 'skipped: no proper author info (internal note)');
-        return;
-      }
-    }
-
     const dateIso = getArticleDate(article);
-    console.log('[EXTRACT] Article', idx + 1, 'extracted:', name, email, role);
 
-    messages.push({
-      authorName: name,
-      authorEmail: email,
+    const message = {
+      authorName: isSystem ? 'System' : (name || ''),
+      authorEmail: isSystem ? '' : (email || ''),
       role,
+      visibility,
       date: dateIso,
       contentText: text
-    });
+    };
+
+    messages.push(message);
   });
 
   console.log('[EXTRACT] Extracted', messages.length, 'messages');
 
   if (anonymize) {
     messages.forEach(message => {
-      if (message.authorEmail) {
-        delete message.authorEmail;
-      }
-      message.authorName = stripEmails(message.authorName);
-      if (!message.authorName) {
-        message.authorName = 'Anonymous';
-      }
+      delete message.authorName;
+      delete message.authorEmail;
       message.contentText = stripEmails(message.contentText);
     });
   }
@@ -423,7 +275,9 @@ async function extractAndCopy(options = {}) {
   const transcript = messages.map(m => {
     const d = m.date ? new Date(m.date) : null;
     const local = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
-    return `mail: ${m.authorName}\ndate: ${local}\ncontent:\n${m.contentText}`;
+    const vis = m.visibility === 'internal' ? 'internal' : 'public';
+    const mailLine = anonymize ? '[redacted]' : (m.authorName || '');
+    return `mail: ${mailLine}\nrole: ${m.role} (${vis})\ndate: ${local}\ncontent:\n${m.contentText}`;
   }).join('\n\n');
 
   // Copy to clipboard using execCommand (works in content script context)
@@ -453,12 +307,15 @@ async function extractAndCopy(options = {}) {
   const jsonMessages = messages.map(m => {
     const normalizedContent = (m.contentText || '').replace(/\n/g, ' ').replace(/\s{2,}/g, ' ').trim();
     const entry = {
-      authorName: m.authorName,
-      ...(anonymize || !m.authorEmail ? {} : { authorEmail: m.authorEmail }),
       role: m.role,
+      visibility: m.visibility,
       date: m.date,
       contentText: normalizedContent
     };
+    if (!anonymize) {
+      entry.authorName = m.authorName;
+      if (m.authorEmail) entry.authorEmail = m.authorEmail;
+    }
     return entry;
   });
 
