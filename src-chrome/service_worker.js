@@ -9,7 +9,8 @@ async function runOnActiveTab(options = {}) {
     anonymize: Boolean(options.anonymize),
     downloadJson: Boolean(options.downloadJson)
   };
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  // a service worker has no window of its own: take the window the user last focused
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab || !tab.id) return { ok: false, error: 'No active tab' };
 
   let result;

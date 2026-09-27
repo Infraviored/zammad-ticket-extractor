@@ -43,8 +43,9 @@ One source tree, two browsers:
 
 ```
 src/extract.js            extraction, runs inside the Zammad page (shared)
-src/background.js         Firefox MV2 background: injects extract.js as code
+src-firefox/background.js Firefox MV2 background: injects extract.js as code
 src/popup.*, icons        shared
+src-<browser>/            files only that browser gets (copied over src/)
 src/browser-shim.js       maps `browser` to `chrome` where it is missing
 src-chrome/service_worker.js  Chrome MV3: chrome.scripting.executeScript(func)
 manifests/base.json       shared manifest keys
